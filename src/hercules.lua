@@ -2,7 +2,6 @@
 
 local Pipeline = require("pipeline")
 local config = require("config")
--- utils
 
 local function filesize(file)
     local f = io.open(file, "r")
@@ -200,7 +199,8 @@ local function print_usage()
     local general_flags = {
         { flags = {"--overwrite", ""}, description = "Overwrites the original file with obfuscated code" },
         { flags = {"--folder", ""}, description = "Process all Lua files in the given folder" },
-        { flags = {"--sanity", ""}, description = "Check if obfuscated code output matches original" }
+        { flags = {"--sanity", ""}, description = "Check if obfuscated code output matches original" },
+        { flags = {"--parse-ast", "<file>"}, description = "Parse a Lua file and print its AST" }
     }
     for _, flag in ipairs(general_flags) do
         print(colors.cyan .. flag.flags[1] .. flag.flags[2] .. colors.green .. string.rep(" ", 20 - #flag.flags[1] - #flag.flags[2]) .. flag.description .. colors.reset)
@@ -237,6 +237,72 @@ for _, flag in ipairs(obfuscation_flags) do
     print(colors.cyan .. short_flag .. ", " .. long_flag .. padding .. colors.white .. ": " .. colors.green .. flag.description .. colors.reset)
 end
 os.exit(1)
+end
+
+local function pretty_print(tbl, indent)
+    indent = indent or 0
+    local formatting = string.rep("  ", indent)
+    if type(tbl) ~= "table" then
+        io.write(formatting .. tostring(tbl) .. "\n")
+        return
+    end
+    io.write(formatting .. "{\n")
+    local keys = {}
+    for k in pairs(tbl) do
+        table.insert(keys, k)
+    end
+    table.sort(keys)
+    for _, k in ipairs(keys) do
+        local v = tbl[k]
+        io.write(formatting .. "  [" .. tostring(k) .. "] = ")
+        if type(v) == "table" then
+            pretty_print(v, indent + 1)
+        else
+            io.write(tostring(v) .. "\n")
+        end
+    end
+    io.write(formatting .. "}\n")
+end
+
+if arg[1] == "--parse-ast" and arg[2] then
+    local parser = require("modules.ast_custom.parser")
+    
+    local file = io.open(arg[2], "r")
+    if not file then
+        print(colors.red .. "Error: Could not open file '" .. arg[2] .. "'" .. colors.reset)
+        os.exit(1)
+    end
+    local code = file:read("*all")
+    file:close()
+
+    local ast, errors = parser.parse(code)
+    
+    if #errors > 0 then
+        print(colors.red .. "Parse errors:" .. colors.reset)
+        for _, err in ipairs(errors) do
+            print(colors.red .. string.format("Line %d, Col %d: %s", err.line, err.col, err.message) .. colors.reset)
+        end
+        os.exit(1)
+    end
+
+    print(colors.green .. "Successfully parsed " .. arg[2] .. colors.reset)
+    print(colors.cyan .. "\nAST Structure:" .. colors.reset)
+    pretty_print(ast)
+    
+    local output_file = arg[2]:gsub("%.lua$", "_ast.txt")
+    local out = io.open(output_file, "w")
+    if out then
+        local original_write = io.write
+        io.write = function(...) out:write(...) end
+        pretty_print(ast)
+        io.write = original_write
+        out:close()
+        print(colors.green .. "\nAST has been written to: " .. colors.reset .. output_file)
+    else
+        print(colors.red .. "Error: Could not create output file" .. colors.reset)
+    end
+    
+    os.exit(0)
 end
 
 local function main()
