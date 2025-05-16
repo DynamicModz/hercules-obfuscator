@@ -26,6 +26,5 @@ file.lua
 tests/
 simple_script_ast.txt
 test.lua
-simple_script.lua
 test_ast.txt
 test_obfuscated.lua
